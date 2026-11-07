@@ -674,7 +674,7 @@ ON public.evaluations FOR SELECT
 TO authenticated
 USING (
     public.is_admin()
-    OR evaluator_id = auth.uid()
+    OR teacher_id = public.get_current_teacher_id()
     OR student_id = public.get_current_student_id()
     OR student_id IN (
         SELECT gs.student_id FROM public.guardian_students gs
@@ -690,7 +690,7 @@ WITH CHECK (
     public.is_admin()
     OR (
         public.is_teacher()
-        AND evaluator_id = auth.uid()
+        AND teacher_id = public.get_current_teacher_id()
         AND circle_id IN (
             SELECT id FROM public.circles WHERE teacher_id = public.get_current_teacher_id()
         )
@@ -705,14 +705,14 @@ USING (
     public.is_admin()
     OR (
         public.is_teacher()
-        AND evaluator_id = auth.uid()
+        AND teacher_id = public.get_current_teacher_id()
     )
 )
 WITH CHECK (
     public.is_admin()
     OR (
         public.is_teacher()
-        AND evaluator_id = auth.uid()
+        AND teacher_id = public.get_current_teacher_id()
     )
 );
 
@@ -776,7 +776,8 @@ CREATE POLICY "events_select_policy"
 ON public.events FOR SELECT
 TO public
 USING (
-    is_public = true OR auth.role() = 'authenticated'
+    is_published = true
+    AND (target_audience = 'all' OR auth.role() = 'authenticated')
 );
 
 DROP POLICY IF EXISTS "events_admin_manage_policy" ON public.events;
@@ -794,12 +795,9 @@ CREATE POLICY "announcements_select_policy"
 ON public.announcements FOR SELECT
 TO authenticated
 USING (
-    is_published = true
-    AND (
-        target_role = 'ALL'
-        OR public.has_role(target_role)
-        OR public.is_admin()
-    )
+    target_role = 'all'
+    OR public.has_role(target_role)
+    OR public.is_admin()
 );
 
 DROP POLICY IF EXISTS "announcements_admin_manage_policy" ON public.announcements;
