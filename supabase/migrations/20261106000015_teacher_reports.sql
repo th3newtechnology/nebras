@@ -143,4 +143,4 @@ USING (
 CREATE OR REPLACE TRIGGER trg_teacher_reports_updated_at
 BEFORE UPDATE ON public.teacher_reports
 FOR EACH ROW
-EXECUTE FUNCTION public.update_updated_at_column();
+EXECUTE FUNCTION public.handle_updated_at();
