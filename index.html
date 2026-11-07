@@ -1,80 +1,57 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>نبراس - نظام إدارة المدرسة القرآنية</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Cairo', 'Tajawal', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
-            },
-          },
-        },
-      }
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@200..1000&family=Tajawal:wght@200..900&display=swap" rel="stylesheet">
-    <style>
-      :root {
-        --font-main: 'Cairo', 'Tajawal', sans-serif;
-      }
-      
-      body {
-        font-family: var(--font-main);
-        background-color: #f8fafc;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
 
-      /* تحسين وراثة الخط للعناصر التي قد تتجاهل خط الجسم الأساسي */
-      button, input, optgroup, select, textarea {
-        font-family: var(--font-main) !important;
-      }
+    <!-- ======================================================= -->
+    <!-- SEO: العنوان والوصف واللغة                               -->
+    <!-- ======================================================= -->
+    <title>مدرسة نبراس القرآن - مسجد إبراهيم الخليل | تعليم قرآني متميز</title>
+    <meta name="description" content="مدرسة نبراس القرآن بمسجد إبراهيم الخليل — صرح تعليمي قرآني يقدم حلقات الحفظ والتجويد والإجازات القرآنية بالسند المتصل لجميع الأعمار." />
+    <meta name="keywords" content="مدرسة قرآن, حفظ القرآن, تجويد, مسجد إبراهيم الخليل, نبراس, حلقات قرآنية, إجازة قرآنية" />
+    <meta name="author" content="مدرسة نبراس القرآن" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://nebras-quran.edu" />
 
-      /* تحسين شريط التمرير للواجهة العربية */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f5f9;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
-      }
+    <!-- ======================================================= -->
+    <!-- Open Graph (Facebook, WhatsApp, LinkedIn)                -->
+    <!-- ======================================================= -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ar_DZ" />
+    <meta property="og:url" content="https://nebras-quran.edu" />
+    <meta property="og:site_name" content="مدرسة نبراس القرآن" />
+    <meta property="og:title" content="مدرسة نبراس القرآن - مسجد إبراهيم الخليل" />
+    <meta property="og:description" content="صرح تعليمي قرآني مبارك — حلقات الحفظ والتجويد والإجازات القرآنية بالسند المتصل." />
+    <meta property="og:image" content="https://nebras-quran.edu/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="شعار مدرسة نبراس القرآن" />
 
-      /* منع تمدد الصور في النماذج */
-      img {
-        max-width: 100%;
-        height: auto;
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "recharts": "https://esm.sh/recharts@^3.7.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "firebase/": "https://esm.sh/firebase@^12.8.0/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
-  <body>
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="مدرسة نبراس القرآن - مسجد إبراهيم الخليل" />
+    <meta name="twitter:description" content="صرح تعليمي قرآني مبارك — حلقات الحفظ والتجويد والإجازات القرآنية." />
+    <meta name="twitter:image" content="https://nebras-quran.edu/og-image.png" />
+
+    <!-- ======================================================= -->
+    <!-- Favicon — SVG inline كتاب إسلامي بسيط                   -->
+    <!-- ======================================================= -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23065f46'/><path d='M8 7h16v2H8zm0 4h12v2H8zm0 4h14v2H8zm0 4h10v2H8zm0 4h12v2H8z' fill='%23fbbf24' opacity='.9'/></svg>" />
+
+    <!-- ======================================================= -->
+    <!-- الخطوط العربية — اتصال مبكر وتحميل متزامن خفيف (display=swap) -->
+    <!-- ======================================================= -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;600;700;900&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-ivory-50 text-slate-800 antialiased font-sans selection:bg-islamic-100 selection:text-islamic-900">
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

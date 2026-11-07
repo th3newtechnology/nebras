@@ -42,6 +42,8 @@ export interface Conversation {
 }
 
 export type NotificationType = 'success' | 'info' | 'warning' | 'error';
+export type NotificationCategory = 'session' | 'absence' | 'report' | 'message' | 'achievement' | 'system';
+export type NotificationPriority = 'urgent' | 'high' | 'normal' | 'low';
 
 export interface Notification {
   id: string;
@@ -50,6 +52,12 @@ export interface Notification {
   type: NotificationType;
   timestamp: Date;
   read: boolean;
+  category?: NotificationCategory;
+  priority?: NotificationPriority;
+  linkUrl?: string;
+  actionLabel?: string;
+  metadata?: Record<string, any>;
+  readAt?: string;
 }
 
 export interface ProgressEntry {
@@ -117,4 +125,4 @@ export interface Application {
   notes?: string;
 }
 
-export type ViewType = 'dashboard' | 'students' | 'teachers' | 'fees' | 'halls' | 'events' | 'grades' | 'attendance' | 'timetable' | 'settings' | 'registration' | 'messages';
+export type ViewType = 'dashboard' | 'students' | 'teachers' | 'fees' | 'halls' | 'events' | 'grades' | 'attendance' | 'timetable' | 'settings' | 'registration' | 'messages' | 'recitation';

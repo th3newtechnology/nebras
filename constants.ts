@@ -1,12 +1,22 @@
-
 import { Student, Teacher, Classroom, Announcement, PaymentStatus } from './types';
+
+export const SCHOOL_INFO = {
+  name: 'مدرسة نبراس القرآن',
+  affiliation: 'مسجد إبراهيم الخليل',
+  fullName: 'مدرسة نبراس القرآن بمسجد إبراهيم الخليل',
+  vision: 'ريادة في تعليم القرآن الكريم وتخريج جيل متخلق بأخلاق القرآن',
+  message: 'تقديم تعليم قرآني متميز يجمع بين الإتقان في الحفظ والتجويد والتربية الإيمانية',
+  email: 'contact@nebras-quran.edu',
+  phone: '0500000000',
+  address: 'مسجد إبراهيم الخليل'
+};
 
 export const MOCK_STUDENTS: Student[] = [
   {
     id: '1',
     name: 'أحمد محمد علي',
     birthDate: '2012-05-15',
-    address: 'حي اليرموك، الرياض',
+    address: 'حي اليرموك',
     guardianName: 'محمد علي',
     guardianPhone: '0501234567',
     teacherId: 't1',
@@ -15,14 +25,13 @@ export const MOCK_STUDENTS: Student[] = [
     attendanceRate: 98,
     paymentStatus: PaymentStatus.PAID,
     lastRevision: 'سورة البقرة',
-    // Added missing progressHistory
     progressHistory: []
   },
   {
     id: '2',
     name: 'سارة عبد الله',
     birthDate: '2013-10-20',
-    address: 'حي النرجس، الرياض',
+    address: 'حي النرجس',
     guardianName: 'عبد الله بن خالد',
     guardianPhone: '0559876543',
     teacherId: 't2',
@@ -31,14 +40,13 @@ export const MOCK_STUDENTS: Student[] = [
     attendanceRate: 92,
     paymentStatus: PaymentStatus.PENDING,
     lastRevision: 'سورة آل عمران',
-    // Added missing progressHistory
     progressHistory: []
   },
   {
     id: '3',
     name: 'يوسف عمر الفاروق',
     birthDate: '2014-01-10',
-    address: 'حي الملقا، الرياض',
+    address: 'حي الملقا',
     guardianName: 'عمر الفاروق',
     guardianPhone: '0562233445',
     teacherId: 't1',
@@ -47,7 +55,6 @@ export const MOCK_STUDENTS: Student[] = [
     attendanceRate: 100,
     paymentStatus: PaymentStatus.PAID,
     lastRevision: 'سورة النساء',
-    // Added missing progressHistory
     progressHistory: []
   }
 ];
@@ -80,14 +87,18 @@ export const MOCK_HALLS: Classroom[] = [
 ];
 
 export const MOCK_ANNOUNCEMENTS: Announcement[] = [
-  { id: 'a1', title: 'بدء التسجيل للفصل الصيفي', date: '2024-05-01', content: 'نعلن عن فتح باب التسجيل للدورات الصيفية المكثفة.', type: 'info' },
-  { id: 'a2', title: 'اجتماع أولياء الأمور', date: '2024-05-10', content: 'ندعوكم لحضور الاجتماع الدوري لمناقشة سير العملية التعليمية.', type: 'warning' }
+  { id: 'a1', title: 'بدء التسجيل للفصل الصيفي', date: '2026-05-01', content: 'نعلن عن فتح باب التسجيل للدورات الصيفية المكثفة بمدرسة نبراس القرآن.', type: 'info' },
+  { id: 'a2', title: 'اجتماع أولياء الأمور', date: '2026-05-10', content: 'ندعوكم لحضور اللقاء الدوري في رحاب مسجد إبراهيم الخليل لمناقشة سير العملية التعليمية.', type: 'warning' }
 ];
 
 export const COLORS = {
-  primary: '#0891b2', // Cyan-600
-  secondary: '#0d9488', // Teal-600
-  accent: '#f59e0b', // Amber-500
-  background: '#f8fafc',
-  text: '#1e293b'
+  primary: '#065f46',      // Islamic Emerald 800
+  primaryDark: '#064e3b',  // Islamic Emerald 900
+  primaryLight: '#059669', // Islamic Emerald 600
+  accent: '#d97706',       // Warm Gold 500
+  accentLight: '#fbbf24',  // Warm Gold 400
+  background: '#fdfbf7',   // Ivory 50
+  card: '#ffffff',
+  text: '#1e293b',
+  muted: '#64748b'
 };

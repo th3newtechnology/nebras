@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-main: 'Cairo', 'Tajawal', sans-serif;
+  --font-quran: 'Amiri', serif;
+  --color-islamic-primary: #064e3b;
+  --color-gold-primary: #d97706;
+  --color-ivory-bg: #fdfbf7;
+}
+
+body {
+  font-family: var(--font-main);
+  background-color: #fdfbf7;
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  direction: rtl;
+}
+
+/* تحسين وراثة الخط للعناصر التي قد تتجاهل خط الجسم الأساسي */
+button, input, optgroup, select, textarea {
+  font-family: var(--font-main) !important;
+}
+
+/* تحسين شريط التمرير للواجهة العربية */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* نمط زخرفي إسلامي خفيف */
+.bg-islamic-pattern {
+  background-color: #fdfbf7;
+  background-image: radial-gradient(#064e3b 0.65px, transparent 0.65px), radial-gradient(#d97706 0.65px, #fdfbf7 0.65px);
+  background-size: 26px 26px;
+  background-position: 0 0, 13px 13px;
+  background-opacity: 0.05;
+}
+
+/* منع تمدد الصور في النماذج */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ========================================================================= */
+/* إمكانية الوصول: احترام تفضيل المستخدم لتقليل الحركة (prefers-reduced-motion) */
+/* متوافق مع WCAG 2.2 AA المعيار 2.3.3                                      */
+/* ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

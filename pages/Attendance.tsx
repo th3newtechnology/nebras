@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   CheckSquare,
@@ -9,400 +8,660 @@ import {
   XCircle,
   Calendar as CalendarIcon,
   Loader2,
-  BarChart3,
-  ArrowLeftRight,
-  TrendingUp,
-  FileText,
+  FileSpreadsheet,
+  Printer,
+  RefreshCw,
+  Clock,
+  Sparkles,
+  Users,
+  AlertTriangle,
+  AlertCircle,
   ChevronLeft,
-  UserCheck,
-  UserX
+  ChevronRight,
+  ShieldAlert,
+  Edit3,
 } from 'lucide-react';
-import { useLocalCollection, addLocalData } from '../hooks/useLocalDB';
+import {
+  StudentAttendanceRow,
+  AttendanceStatus,
+  AttendanceStudentSummary,
+  SaveAttendanceDTO,
+} from '../types/pedagogical.types';
+import { CircleItem } from '../types/circle.types';
+import {
+  fetchCircleAttendance,
+  saveCircleAttendance,
+  fetchAttendanceReports,
+  exportAttendanceToCSV,
+} from '../lib/attendanceService';
+import { fetchCircles } from '../lib/circlesService';
+import { AttendanceNotesModal } from '../components/attendance/AttendanceNotesModal';
 import { useNotifications } from '../context/NotificationContext';
-import { useAuth } from '../context/AuthContext';
-import { UserRole } from '../types';
 
-type ViewMode = 'daily' | 'report';
+const STATUS_CONFIG: Record<
+  AttendanceStatus,
+  { label: string; activeColor: string; inactiveColor: string; icon: any }
+> = {
+  present: {
+    label: 'حاضر',
+    activeColor: 'bg-emerald-600 text-white shadow-xs',
+    inactiveColor: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100',
+    icon: CheckCircle2,
+  },
+  absent: {
+    label: 'غائب',
+    activeColor: 'bg-rose-600 text-white shadow-xs',
+    inactiveColor: 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100',
+    icon: XCircle,
+  },
+  late: {
+    label: 'متأخر',
+    activeColor: 'bg-amber-600 text-white shadow-xs',
+    inactiveColor: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100',
+    icon: Clock,
+  },
+  excused: {
+    label: 'معذور',
+    activeColor: 'bg-purple-600 text-white shadow-xs',
+    inactiveColor: 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100',
+    icon: AlertCircle,
+  },
+};
 
 const Attendance: React.FC = () => {
-  const { user } = useAuth();
-  const { data: students, loading: studentsLoading } = useLocalCollection('students');
-  const { data: logs, refreshData: refreshLogs, loading: logsLoading } = useLocalCollection('attendance_logs');
-  const { addNotification } = useNotifications();
+  const [activeTab, setActiveTab] = useState<'daily' | 'reports'>('daily');
 
-  const [viewMode, setViewMode] = useState<ViewMode>('daily');
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [circles, setCircles] = useState<CircleItem[]>([]);
+  const [selectedCircleId, setSelectedCircleId] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+
+  // Daily Mode State
+  const [rows, setRows] = useState<StudentAttendanceRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Report filters
-  const [startDate, setStartDate] = useState(
-    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  // Reports Mode State
+  const [summaries, setSummaries] = useState<AttendanceStudentSummary[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+
+  // Notes Modal State
+  const [editingRow, setEditingRow] = useState<StudentAttendanceRow | null>(null);
+
+  const { addNotification } = useNotifications();
+
+  // Load circles on mount
+  useEffect(() => {
+    fetchCircles().then(res => {
+      setCircles(res.circles);
+      if (res.circles.length > 0) {
+        setSelectedCircleId(res.circles[0].id);
+      }
+    });
+  }, []);
+
+  // Load daily attendance when circle or date changes
+  const loadDailyAttendance = async () => {
+    if (!selectedCircleId) return;
+    setLoading(true);
+    try {
+      const res = await fetchCircleAttendance(selectedCircleId, selectedDate);
+      setRows(res.rows);
+      setIsLive(res.isLive);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (students.length > 0) {
-      const initial: Record<string, boolean> = {};
-      students.forEach(s => initial[s.id] = true);
-      setAttendance(initial);
+    if (selectedCircleId && activeTab === 'daily') {
+      loadDailyAttendance();
     }
-  }, [students]);
+  }, [selectedCircleId, selectedDate, activeTab]);
 
-  const toggleAttendance = (id: string) => {
-    setAttendance(prev => ({ ...prev, [id]: !prev[id] }));
+  // Load reports when switching to reports tab
+  const loadReports = async () => {
+    if (!selectedCircleId) return;
+    setReportsLoading(true);
+    try {
+      const res = await fetchAttendanceReports(selectedCircleId);
+      setSummaries(res.summaries);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setReportsLoading(false);
+    }
   };
 
-  const markAllPresent = () => {
-    const updated: Record<string, boolean> = {};
-    students.forEach(s => updated[s.id] = true);
-    setAttendance(updated);
-    addNotification('تحضير جماعي', 'تم تحديد جميع الطلاب كحضور. يرجى حفظ الكشف للاعتماد.', 'info');
+  useEffect(() => {
+    if (selectedCircleId && activeTab === 'reports') {
+      loadReports();
+    }
+  }, [selectedCircleId, activeTab]);
+
+  // Selected Circle Metadata
+  const currentCircle = circles.find(c => c.id === selectedCircleId);
+
+  // One-Click Status Change
+  const handleStatusChange = (studentId: string, newStatus: AttendanceStatus) => {
+    setRows(prev =>
+      prev.map(r => {
+        if (r.studentId === studentId) {
+          return {
+            ...r,
+            status: newStatus,
+            delayMinutes: newStatus === 'late' ? (r.delayMinutes > 0 ? r.delayMinutes : 15) : 0,
+          };
+        }
+        return r;
+      })
+    );
   };
 
-  const markAllAbsent = () => {
-    const updated: Record<string, boolean> = {};
-    students.forEach(s => updated[s.id] = false);
-    setAttendance(updated);
-    addNotification('تغييب جماعي', 'تم تحديد جميع الطلاب كغياب. يرجى حفظ الكشف للاعتماد.', 'warning');
+  // Bulk Actions
+  const handleMarkAll = (status: AttendanceStatus) => {
+    setRows(prev => prev.map(r => ({ ...r, status, delayMinutes: 0 })));
+    addNotification(
+      'تحضير جماعي',
+      `تم تعيين جميع الطلاب بحالة (${STATUS_CONFIG[status].label}). يرجى حفظ الكشف لتثبيت التغييرات.`,
+      'info'
+    );
   };
 
-  const handleSave = () => {
+  // Save Attendance to Supabase
+  const handleSave = async () => {
+    if (!selectedCircleId) return;
     setIsSaving(true);
-    const log = {
-      date: currentDate,
-      records: attendance,
-      totalPresent: Object.values(attendance).filter(v => v).length,
-      totalAbsent: Object.values(attendance).filter(v => !v).length
-    };
 
-    addLocalData('attendance_logs', log);
+    try {
+      const dto: SaveAttendanceDTO = {
+        circleId: selectedCircleId,
+        date: selectedDate,
+        records: rows.map(r => ({
+          studentId: r.studentId,
+          status: r.status,
+          delayMinutes: r.delayMinutes,
+          notes: r.notes,
+        })),
+      };
 
-    setTimeout(() => {
+      const res = await saveCircleAttendance(dto);
+      if (res.success) {
+        addNotification(
+          'تم الحفظ بنجاح',
+          `تم حفظ كشف الحضور والغياب لحلقة "${currentCircle?.name}" ليوم ${selectedDate} بنجاح.`,
+          'success'
+        );
+      } else {
+        addNotification('خطأ أثناء الحفظ', res.error || 'فشل حفظ الكشف', 'error');
+      }
+    } catch (err) {
+      addNotification('خطأ', 'حدث خطأ غير متوقع أثناء الحفظ', 'error');
+    } finally {
       setIsSaving(false);
-      refreshLogs();
-      addNotification('تم حفظ التحضير', `تم تسجيل حضور ${log.totalPresent} طالباً لتاريخ ${currentDate}`, 'success');
-    }, 1000);
+    }
   };
 
-  const filteredStudents = useMemo(() => {
-    let list = students;
-    if (user?.role === UserRole.TEACHER) {
-      list = students.filter(s => s.teacherId === user.teacherId);
-    }
-    return list.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [students, searchTerm, user]);
+  // Notes Modal Save
+  const handleSaveNotes = (delayMinutes: number, notes: string) => {
+    if (!editingRow) return;
+    setRows(prev =>
+      prev.map(r => {
+        if (r.studentId === editingRow.studentId) {
+          return {
+            ...r,
+            delayMinutes,
+            notes,
+          };
+        }
+        return r;
+      })
+    );
+    setEditingRow(null);
+  };
 
-  // Filtered logs for report
-  const filteredLogs = useMemo(() => {
-    return logs
-      .filter(log => log.date >= startDate && log.date <= endDate)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [logs, startDate, endDate]);
+  // Daily Stats Counters
+  const dailyStats = useMemo(() => {
+    const total = rows.length;
+    const present = rows.filter(r => r.status === 'present').length;
+    const absent = rows.filter(r => r.status === 'absent').length;
+    const late = rows.filter(r => r.status === 'late').length;
+    const excused = rows.filter(r => r.status === 'excused').length;
+    return { total, present, absent, late, excused };
+  }, [rows]);
 
-  const stats = useMemo(() => {
-    if (filteredLogs.length === 0) return { avg: 0, totalP: 0, totalA: 0 };
-    const totalP = filteredLogs.reduce((acc, curr) => acc + curr.totalPresent, 0);
-    const totalA = filteredLogs.reduce((acc, curr) => acc + curr.totalAbsent, 0);
-    const avg = (totalP / (totalP + totalA)) * 100;
-    return { avg: Math.round(avg), totalP, totalA };
-  }, [filteredLogs]);
+  // Filtered Rows by search
+  const filteredRows = useMemo(() => {
+    return rows.filter(
+      r =>
+        !searchTerm ||
+        r.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.registrationNumber.includes(searchTerm)
+    );
+  }, [rows, searchTerm]);
+
+  // Filtered Summaries by search
+  const filteredSummaries = useMemo(() => {
+    return summaries.filter(
+      s =>
+        !searchTerm ||
+        s.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.registrationNumber.includes(searchTerm)
+    );
+  }, [summaries, searchTerm]);
+
+  // Print Handlers
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">الحضور والغياب</h2>
-          <p className="text-slate-500 mt-1 font-medium">إدارة التحضير اليومي واستخراج تقارير الانضباط</p>
-        </div>
+    <div className="space-y-6 pb-12 animate-in fade-in duration-300" dir="rtl">
+      {/* Header */}
+      <section className="bg-gradient-to-r from-islamic-950 via-islamic-900 to-islamic-800 text-white rounded-3xl p-6 lg:p-8 shadow-xl border border-gold-500/30 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-gold-500/10 rounded-full blur-3xl pointer-events-none -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-gold-500/20 text-gold-300 border border-gold-400/30 text-xs font-bold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>السجل التربوي وضبط الحضور</span>
+              </span>
+              <span
+                className={`text-[11px] px-2.5 py-0.5 rounded-full font-mono font-bold ${
+                  isLive
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                }`}
+              >
+                {isLive ? '● متصل بقاعدة البيانات' : '○ وضع العرض المحلي'}
+              </span>
+            </div>
+            <h1 className="text-2xl lg:text-3xl font-black font-amiri text-gold-300">
+              كشوفات الحضور والغياب اليومية
+            </h1>
+            <p className="text-xs lg:text-sm text-slate-300 max-w-2xl leading-relaxed">
+              رصد الحضور السريع بنظام النقرة الواحدة لحلقات مسجد إبراهيم الخليل، تتبع التأخر والأعذار، وإصدار تقارير الإنذارات التلقائية عند تجاوز نسبة الغياب.
+            </p>
+          </div>
 
-        {/* Toggle Switch */}
-        <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-1">
-          <button
-            onClick={() => setViewMode('daily')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'daily'
-                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-                : 'text-slate-500 hover:bg-slate-50'
-              }`}
-          >
-            <CheckSquare className="w-4 h-4" />
-            التحضير اليومي
-          </button>
-          <button
-            onClick={() => setViewMode('report')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${viewMode === 'report'
-                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-                : 'text-slate-500 hover:bg-slate-50'
-              }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            تقارير الفترة
-          </button>
-        </div>
-      </header>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/15"
+              title="طباعة الكشف"
+            >
+              <Printer className="w-3.5 h-3.5 text-gold-400" />
+              <span>طباعة الكشف</span>
+            </button>
 
-      {viewMode === 'daily' ? (
-        <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className="bg-cyan-50 p-3 rounded-2xl text-cyan-600">
-                <CalendarIcon className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mb-0.5">تاريخ التحضير</p>
-                <input
-                  type="date"
-                  value={currentDate}
-                  onChange={(e) => setCurrentDate(e.target.value)}
-                  className="bg-transparent border-none focus:ring-0 text-lg font-bold text-slate-800 p-0 cursor-pointer"
-                />
-              </div>
+            {activeTab === 'daily' && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving || loading}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gold-500 hover:bg-gold-600 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-gold-900/30 disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                <span>حفظ كشف اليوم</span>
+              </button>
+            )}
+
+            {activeTab === 'reports' && (
+              <button
+                onClick={() => exportAttendanceToCSV(summaries, currentCircle?.name || 'عام')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gold-500 hover:bg-gold-600 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-gold-900/30"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>تصدير تقرير Excel/CSV</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Tabs Switcher */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          onClick={() => setActiveTab('daily')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all ${
+            activeTab === 'daily'
+              ? 'bg-islamic-800 text-white shadow-md'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <CheckSquare className="w-4 h-4 text-gold-400" />
+          <span>الرصد اليومي السريع (بنظام النقرة)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('reports')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all ${
+            activeTab === 'reports'
+              ? 'bg-islamic-800 text-white shadow-md'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <AlertTriangle className="w-4 h-4 text-gold-400" />
+          <span>الكشوفات وتقارير الغياب التراكمية والإنذارات</span>
+        </button>
+      </div>
+
+      {/* Selector Toolbar */}
+      <section className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-4">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            {/* Circle Select */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">
+                الحلقة القرآنية
+              </label>
+              <select
+                value={selectedCircleId}
+                onChange={e => setSelectedCircleId(e.target.value)}
+                className="px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800"
+              >
+                {circles.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.level}) — المحفظ: {c.teacherName}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            {/* Date Picker (in Daily Mode) */}
+            {activeTab === 'daily' && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 block uppercase">
+                  تاريخ الحصة
+                </label>
+                <div className="relative">
+                  <CalendarIcon className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => setSelectedDate(e.target.value)}
+                    className="pr-10 pl-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-mono font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Search */}
+          <div className="relative w-full lg:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="ابحث باسم الطالب أو رقم القيد..."
+              className="w-full pr-11 pl-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-islamic-800"
+            />
+          </div>
+        </div>
+
+        {/* Daily Mode Quick Counters & Bulk Actions */}
+        {activeTab === 'daily' && (
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs font-bold">
+            {/* Stat Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700">
+                إجمالي المقيدين: <strong>{dailyStats.total}</strong>
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200">
+                حاضر: <strong>{dailyStats.present}</strong>
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200">
+                غائب: <strong>{dailyStats.absent}</strong>
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200">
+                متأخر: <strong>{dailyStats.late}</strong>
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-800 border border-purple-200">
+                معذور: <strong>{dailyStats.excused}</strong>
+              </span>
+            </div>
+
+            {/* Bulk Buttons */}
+            <div className="flex items-center gap-2">
               <button
-                onClick={markAllPresent}
-                disabled={isSaving || students.length === 0}
-                className="flex items-center gap-2 px-6 py-3 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 transition-all font-black text-xs border border-emerald-100 active:scale-95"
+                type="button"
+                onClick={() => handleMarkAll('present')}
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition-colors text-xs font-bold"
               >
-                <UserCheck className="w-4 h-4" />
                 تحضير الجميع
               </button>
               <button
-                onClick={markAllAbsent}
-                disabled={isSaving || students.length === 0}
-                className="flex items-center gap-2 px-6 py-3 bg-rose-50 text-rose-700 rounded-2xl hover:bg-rose-100 transition-all font-black text-xs border border-rose-100 active:scale-95"
+                type="button"
+                onClick={() => handleMarkAll('absent')}
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-xl transition-colors text-xs font-bold"
               >
-                <UserX className="w-4 h-4" />
                 تغييب الجميع
               </button>
-              <div className="w-px h-8 bg-slate-100 mx-2 hidden md:block"></div>
-              <button
-                onClick={handleSave}
-                disabled={isSaving || students.length === 0}
-                className="flex items-center gap-2 px-10 py-3.5 bg-cyan-600 text-white rounded-2xl hover:bg-cyan-700 transition-all font-bold shadow-xl shadow-cyan-600/30 disabled:opacity-50 active:scale-95"
-              >
-                {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                اعتماد الكشف وحفظ البيانات
-              </button>
             </div>
           </div>
+        )}
+      </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-5 group hover:border-emerald-200 transition-colors">
-              <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-bold uppercase mb-1">الحضور الآن</p>
-                <p className="text-2xl font-black text-slate-800">{Object.values(attendance).filter(v => v).length}</p>
-              </div>
+      {/* Main Content: Daily Mode Table */}
+      {activeTab === 'daily' && (
+        <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          {loading ? (
+            <div className="p-16 text-center space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-islamic-800" />
+              <p className="text-xs font-bold text-slate-500">جاري تحميل كشف طلاب الحلقة...</p>
             </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-5 group hover:border-rose-200 transition-colors">
-              <div className="w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 group-hover:scale-110 transition-transform">
-                <XCircle className="w-7 h-7" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-bold uppercase mb-1">الغياب الآن</p>
-                <p className="text-2xl font-black text-slate-800">{Object.values(attendance).filter(v => !v).length}</p>
-              </div>
+          ) : filteredRows.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 space-y-2">
+              <Users className="w-12 h-12 mx-auto mb-2 opacity-30" />
+              <p className="font-bold text-slate-700 text-sm">لا يوجد طلاب مسجلون في هذه الحلقة</p>
+              <p className="text-xs">تأكد من انتساب الطلاب للحلقة من خلال شاشة إدارة الطلاب</p>
             </div>
-            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-5 group hover:border-cyan-200 transition-colors">
-              <div className="w-14 h-14 bg-cyan-50 rounded-2xl flex items-center justify-center text-cyan-600 group-hover:scale-110 transition-transform">
-                <TrendingUp className="w-7 h-7" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-bold uppercase mb-1">نسبة الحضور</p>
-                <p className="text-2xl font-black text-slate-800">
-                  {students.length > 0 ? Math.round((Object.values(attendance).filter(v => v).length / students.length) * 100) : 0}%
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-5 bg-slate-50/50 border-b border-slate-100 flex gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="البحث عن اسم الطالب لسرعة التحضير..."
-                  className="w-full pr-11 pl-4 py-3 text-sm bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-cyan-500/10 transition-all"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {studentsLoading ? (
-              <div className="py-24 flex flex-col items-center justify-center text-slate-400">
-                <Loader2 className="w-12 h-12 animate-spin text-cyan-600 mb-4" />
-                <p className="font-bold">جاري تحميل كشف الأسماء...</p>
-              </div>
-            ) : (
-              <table className="w-full text-right">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <th className="px-8 py-5">الملف التعريفي للطالب</th>
-                    <th className="px-8 py-5">تسجيل الحالة</th>
-                    <th className="px-8 py-5">الملاحظات والأعذار</th>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200/80 uppercase">
+                  <tr>
+                    <th className="p-4 w-12">#</th>
+                    <th className="p-4">رقم القيد</th>
+                    <th className="p-4">اسم الطالب</th>
+                    <th className="p-4 text-center">حالة الحضور (نقرة واحدة)</th>
+                    <th className="p-4">التأخر / الأعذار والملاحظات</th>
+                    <th className="p-4 text-center">إجراءات</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filteredStudents.map(student => (
-                    <tr key={student.id} className={`hover:bg-slate-50/50 transition-colors ${!attendance[student.id] ? 'bg-rose-50/10' : ''}`}>
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg border-2 border-white shadow-sm ${attendance[student.id] ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                            }`}>
-                            {student.name[0]}
-                          </div>
-                          <div>
-                            <span className="text-base font-bold text-slate-800 block leading-none">{student.name}</span>
-                            <span className="text-[10px] text-slate-400 font-bold mt-1 block uppercase">رقم الطالب: #{student.id.slice(0, 4)}</span>
-                          </div>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredRows.map((row, idx) => (
+                    <tr
+                      key={row.studentId}
+                      className="hover:bg-slate-50/70 transition-colors group"
+                    >
+                      <td className="p-4 font-mono text-slate-400">{idx + 1}</td>
+                      <td className="p-4 font-mono font-bold text-slate-600">
+                        {row.registrationNumber}
+                      </td>
+                      <td className="p-4">
+                        <strong className="font-black text-slate-900 font-amiri text-sm block">
+                          {row.studentName}
+                        </strong>
+                      </td>
+
+                      {/* 4 Single-Click Status Buttons */}
+                      <td className="p-4">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {(['present', 'absent', 'late', 'excused'] as AttendanceStatus[]).map(st => {
+                            const cfg = STATUS_CONFIG[st];
+                            const isSelected = row.status === st;
+                            const Icon = cfg.icon;
+
+                            return (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => handleStatusChange(row.studentId, st)}
+                                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                                  isSelected
+                                    ? cfg.activeColor
+                                    : cfg.inactiveColor
+                                }`}
+                              >
+                                <Icon className="w-3.5 h-3.5" />
+                                <span>{cfg.label}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </td>
-                      <td className="px-8 py-5">
-                        <button
-                          onClick={() => toggleAttendance(student.id)}
-                          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all border ${attendance[student.id]
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm'
-                              : 'bg-rose-50 text-rose-700 border-rose-100 shadow-sm'
-                            }`}
-                        >
-                          {attendance[student.id] ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                          {attendance[student.id] ? 'حاضر' : 'غائب'}
-                        </button>
+
+                      {/* Delay / Notes preview */}
+                      <td className="p-4 text-slate-600">
+                        {row.status === 'late' && (
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 font-bold border border-amber-200 font-mono text-[11px] ml-2">
+                            تأخر: {row.delayMinutes} دقيقة
+                          </span>
+                        )}
+                        {row.notes ? (
+                          <span className="text-[11px] text-slate-700 italic">
+                            «{row.notes}»
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">—</span>
+                        )}
                       </td>
-                      <td className="px-8 py-5">
-                        <input type="text" placeholder="سجل هنا في حال وجود عذر مسبق..." className="bg-transparent border-b border-dashed border-slate-200 focus:border-cyan-500 focus:outline-none text-xs text-slate-500 w-full py-1 transition-colors" />
+
+                      {/* Edit Note Button */}
+                      <td className="p-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingRow(row)}
+                          className="p-1.5 text-slate-400 hover:text-islamic-800 hover:bg-islamic-50 rounded-lg transition-colors"
+                          title="تعديل الملاحظات أو دقائق التأخر"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
-                  {filteredStudents.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="py-24 text-center text-slate-400 font-bold italic">لا توجد سجلات طلاب مطابقة للبحث.</td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-6 animate-in slide-in-from-left-4 duration-500">
-          {/* Report Header & Filter */}
-          <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="flex flex-col md:flex-row items-center gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mr-1">من تاريخ</label>
-                <div className="relative group">
-                  <CalendarIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-hover:text-cyan-600 transition-colors" />
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="pr-11 pl-6 py-3 bg-slate-50 rounded-2xl text-sm font-bold text-slate-700 border-none focus:ring-4 focus:ring-cyan-500/10 transition-all outline-none"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center pt-6 text-slate-300">
-                <ArrowLeftRight className="w-5 h-5" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mr-1">إلى تاريخ</label>
-                <div className="relative group">
-                  <CalendarIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-hover:text-cyan-600 transition-colors" />
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="pr-11 pl-6 py-3 bg-slate-50 rounded-2xl text-sm font-bold text-slate-700 border-none focus:ring-4 focus:ring-cyan-500/10 transition-all outline-none"
-                  />
-                </div>
-              </div>
             </div>
+          )}
+        </section>
+      )}
 
-            <div className="flex items-center gap-8 px-8 py-4 bg-slate-50/50 rounded-3xl border border-slate-100">
-              <div className="text-center">
-                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">متوسط الانضباط</p>
-                <p className="text-3xl font-black text-cyan-600">{stats.avg}%</p>
-              </div>
-              <div className="w-px h-10 bg-slate-200"></div>
-              <div className="text-center">
-                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">إجمالي الحضور</p>
-                <p className="text-2xl font-bold text-slate-800">{stats.totalP}</p>
-              </div>
+      {/* Main Content: Reports Mode */}
+      {activeTab === 'reports' && (
+        <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          {reportsLoading ? (
+            <div className="p-16 text-center space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-islamic-800" />
+              <p className="text-xs font-bold text-slate-500">جاري احتساب المؤشرات والإنذارات التراكمية...</p>
             </div>
-          </div>
-
-          {/* Detailed Logs Table */}
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm uppercase tracking-wider">
-                <FileText className="w-4 h-4 text-cyan-600" />
-                تفاصيل السجلات اليومية للفترة المختارة
-              </h3>
+          ) : filteredSummaries.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 space-y-2">
+              <Users className="w-12 h-12 mx-auto mb-2 opacity-30" />
+              <p className="font-bold text-slate-700 text-sm">لا توجد سجلات تراكمية للحلقة المحددة</p>
             </div>
-
-            {logsLoading ? (
-              <div className="py-24 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-cyan-600" /></div>
-            ) : filteredLogs.length > 0 ? (
-              <table className="w-full text-right">
-                <thead>
-                  <tr className="bg-slate-50/20 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <th className="px-8 py-5 border-b border-slate-100">تاريخ اليوم</th>
-                    <th className="px-8 py-5 border-b border-slate-100">الحضور</th>
-                    <th className="px-8 py-5 border-b border-slate-100">الغياب</th>
-                    <th className="px-8 py-5 border-b border-slate-100 w-1/3">مؤشر الانضباط اليومي</th>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200/80 uppercase">
+                  <tr>
+                    <th className="p-4 w-12">#</th>
+                    <th className="p-4">رقم القيد</th>
+                    <th className="p-4">اسم الطالب</th>
+                    <th className="p-4 text-center">إجمالي الحصص</th>
+                    <th className="p-4 text-center">أيام الحضور</th>
+                    <th className="p-4 text-center">أيام الغياب</th>
+                    <th className="p-4 text-center">التأخر</th>
+                    <th className="p-4 text-center">نسبة الالتزام</th>
+                    <th className="p-4 text-center">حالة الإنذار</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filteredLogs.map((log, idx) => {
-                    const dailyAvg = Math.round((log.totalPresent / (log.totalPresent + log.totalAbsent)) * 100);
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="px-8 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center group-hover:bg-cyan-50 group-hover:text-cyan-600 transition-all">
-                              <CalendarIcon className="w-5 h-5" />
-                            </div>
-                            <span className="font-bold text-slate-700 text-sm">{log.date}</span>
-                          </div>
-                        </td>
-                        <td className="px-8 py-5 text-sm font-bold text-emerald-600">{log.totalPresent} طالب</td>
-                        <td className="px-8 py-5 text-sm font-bold text-rose-500">{log.totalAbsent} طالب</td>
-                        <td className="px-8 py-5">
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center text-[10px] font-bold">
-                              <span className="text-slate-400">النسبة</span>
-                              <span className="text-cyan-700">{dailyAvg}%</span>
-                            </div>
-                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
-                              <div
-                                className={`h-full rounded-full transition-all duration-1000 ${dailyAvg > 90 ? 'bg-emerald-500' : dailyAvg > 70 ? 'bg-cyan-500' : 'bg-amber-500'
-                                  }`}
-                                style={{ width: `${dailyAvg}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSummaries.map((summary, idx) => (
+                    <tr
+                      key={summary.studentId}
+                      className={`hover:bg-slate-50/70 transition-colors ${
+                        summary.hasWarning ? 'bg-rose-50/30' : ''
+                      }`}
+                    >
+                      <td className="p-4 font-mono text-slate-400">{idx + 1}</td>
+                      <td className="p-4 font-mono font-bold text-slate-600">
+                        {summary.registrationNumber}
+                      </td>
+                      <td className="p-4">
+                        <strong className="font-black text-slate-900 font-amiri text-sm">
+                          {summary.studentName}
+                        </strong>
+                      </td>
+                      <td className="p-4 text-center font-mono font-bold">{summary.totalSessions}</td>
+                      <td className="p-4 text-center font-mono text-emerald-700 font-bold">
+                        {summary.presentCount}
+                      </td>
+                      <td className="p-4 text-center font-mono text-rose-700 font-bold">
+                        {summary.absentCount}
+                      </td>
+                      <td className="p-4 text-center font-mono text-amber-700 font-bold">
+                        {summary.lateCount}
+                      </td>
+                      <td className="p-4 text-center font-mono font-bold">
+                        <span
+                          className={`px-2.5 py-1 rounded-lg ${
+                            summary.attendanceRate >= 85
+                              ? 'bg-emerald-50 text-emerald-800'
+                              : summary.attendanceRate >= 70
+                              ? 'bg-amber-50 text-amber-800'
+                              : 'bg-rose-50 text-rose-800'
+                          }`}
+                        >
+                          {summary.attendanceRate}%
+                        </span>
+                      </td>
+
+                      {/* Warning Badge */}
+                      <td className="p-4 text-center">
+                        {summary.hasWarning ? (
+                          <span className="px-3 py-1 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center justify-center gap-1 mx-auto w-fit shadow-xs animate-pulse">
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>إنذار تجاوز الغياب ({summary.consecutiveAbsences} متتالي)</span>
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700 font-bold text-[11px] flex items-center justify-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>مواظب</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-            ) : (
-              <div className="py-24 flex flex-col items-center justify-center text-slate-400 bg-slate-50/30">
-                <BarChart3 className="w-12 h-12 opacity-10 mb-4" />
-                <p className="font-bold">لا توجد سجلات حضور مسجلة في هذا النطاق الزمني</p>
-                <p className="text-xs opacity-60">تأكد من اختيار تواريخ تم فيها إجراء عمليات تحضير</p>
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Notes Modal */}
+      {editingRow && (
+        <AttendanceNotesModal
+          isOpen={!!editingRow}
+          onClose={() => setEditingRow(null)}
+          studentName={editingRow.studentName}
+          status={editingRow.status}
+          currentDelay={editingRow.delayMinutes}
+          currentNotes={editingRow.notes}
+          onSave={handleSaveNotes}
+        />
       )}
     </div>
   );

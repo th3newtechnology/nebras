@@ -1,146 +1,188 @@
-
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { Session } from '@supabase/supabase-js';
 import { User, UserRole } from '../types';
+import {
+  signInWithPassword,
+  signOut as authSignOut,
+  resetPasswordForEmail,
+  getActiveSession,
+  subscribeToAuthState,
+  fetchUserProfile,
+  mapAuthUser,
+  AuthOperationResult,
+} from '../lib/auth';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  setDemoUser: (isDemo: boolean) => void;
+  isConfigured: boolean;
+  login: (email: string, password: string) => Promise<AuthOperationResult>;
+  logout: () => Promise<void>;
+  resetPassword: (email: string) => Promise<AuthOperationResult>;
+  refreshProfile: () => Promise<void>;
+  loginAsDemo?: (role: UserRole) => void;
 }
+
+const DEMO_USERS: Record<UserRole, User> = {
+  [UserRole.ADMIN]: {
+    id: 'u-admin-01',
+    email: 'admin@nebras.edu',
+    displayName: 'المدير العام (إدارة المدرسة)',
+    role: UserRole.ADMIN,
+  },
+  [UserRole.TEACHER]: {
+    id: 'u-teacher-01',
+    email: 'teacher@nebras.edu',
+    displayName: 'فضيلة الشيخ عبد الرحمن (محفظ الحلقات)',
+    role: UserRole.TEACHER,
+  },
+  [UserRole.GUARDIAN]: {
+    id: 'u-guardian-01',
+    email: 'guardian@nebras.edu',
+    displayName: 'محمد علي بن بلقاسم (ولي أمر)',
+    role: UserRole.GUARDIAN,
+  },
+  [UserRole.STUDENT]: {
+    id: 's-001',
+    email: 'student@nebras.edu',
+    displayName: 'محمد ياسين درويش (طالب)',
+    role: UserRole.STUDENT,
+  },
+};
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  session: null,
   loading: true,
-  login: async () => false,
-  logout: () => { },
-  setDemoUser: () => { }
+  isConfigured: false,
+  login: async () => ({ success: false, error: 'Auth context not initialized' }),
+  logout: async () => {},
+  resetPassword: async () => ({ success: false, error: 'Auth context not initialized' }),
+  refreshProfile: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const configured = isSupabaseConfigured();
 
+  // تحديث بيانات الملف الشخصي والصلاحيات من الخادم
+  const refreshProfile = useCallback(async () => {
+    if (!configured || !session) return;
+    try {
+      const { profile, role } = await fetchUserProfile(session.user.id);
+      if (profile && profile.is_active === false) {
+        await authSignOut();
+        setUser(null);
+        setSession(null);
+        return;
+      }
+      setUser(mapAuthUser(session.user, profile, role));
+    } catch {
+      // Ignore background refresh errors
+    }
+  }, [configured, session]);
+
+  // استعادة الجلسة عند بدء التشغيل والاستماع لتغيرات Auth
   useEffect(() => {
-    const savedUserStr = localStorage.getItem('nebras_active_user');
-    if (savedUserStr) {
-      let parsedUser = JSON.parse(savedUserStr);
-      // Patch old teacher sessions missing teacherId
-      if (parsedUser.role === UserRole.TEACHER && !parsedUser.teacherId) {
-        const allTeachersData = JSON.parse(localStorage.getItem('nebras_teachers') || '[]');
-        const matchingTeacher = allTeachersData.find((t: any) => t.name === parsedUser.displayName);
-        if (matchingTeacher) {
-          parsedUser.teacherId = matchingTeacher.id;
-          localStorage.setItem('nebras_active_user', JSON.stringify(parsedUser));
+    let isMounted = true;
+
+    const initAuth = async () => {
+      if (!configured) {
+        if (isMounted) {
+          setUser(null);
+          setSession(null);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const { session: activeSession, user: initialUser } = await getActiveSession();
+        if (isMounted) {
+          setSession(activeSession);
+          setUser(initialUser);
+        }
+      } catch (err) {
+        console.error('فشل استعادة الجلسة من Supabase:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
         }
       }
-      setUser(parsedUser);
-    }
-    setLoading(false);
-  }, []);
+    };
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    // 1. Check Admin (Mock)
-    if (username === 'admin@nebras.edu' && password === 'admin123') {
-      const admin: User = {
-        id: 'admin-1',
-        email: 'admin@nebras.edu',
-        displayName: 'مدير النظام',
-        role: UserRole.ADMIN
-      };
-      localStorage.setItem('nebras_active_user', JSON.stringify(admin));
-      setUser(admin);
-      return true;
-    }
+    initAuth();
 
-    // 2. Check Guardians in Local Storage
-    const guardians = JSON.parse(localStorage.getItem('nebras_guardians') || '[]');
-    const guardianAccount = guardians.find((g: any) => g.username === username && g.password === password);
-
-    if (guardianAccount) {
-      const user: User = {
-        id: guardianAccount.id,
-        email: `${username}@guardian.nebras`,
-        displayName: guardianAccount.guardianName,
-        role: UserRole.GUARDIAN,
-        studentIds: guardianAccount.studentIds,
-        username: guardianAccount.username
-      };
-      localStorage.setItem('nebras_active_user', JSON.stringify(user));
-      setUser(user);
-      return true;
-    }
-
-    // 3. Check Students in Local Storage
-    const studentsAcc = JSON.parse(localStorage.getItem('nebras_student_accounts') || '[]');
-    const studentAccount = studentsAcc.find((s: any) => s.username === username && s.password === password);
-
-    if (studentAccount) {
-      const user: User = {
-        id: studentAccount.id,
-        email: `${username}@student.nebras`,
-        displayName: studentAccount.studentName,
-        role: UserRole.STUDENT,
-        studentId: studentAccount.studentId,
-        username: studentAccount.username
-      };
-      localStorage.setItem('nebras_active_user', JSON.stringify(user));
-      setUser(user);
-      return true;
-    }
-
-    const teachers = JSON.parse(localStorage.getItem('nebras_teachers_accounts') || '[]');
-    const teacherAccount = teachers.find((t: any) => t.username === username && t.password === password);
-
-    if (teacherAccount) {
-      // Fallback for older accounts created before `teacherId` was added to accounts
-      let finalTeacherId = teacherAccount.teacherId;
-      if (!finalTeacherId) {
-        const allTeachersData = JSON.parse(localStorage.getItem('nebras_teachers') || '[]');
-        const matchingTeacher = allTeachersData.find((t: any) => t.name === teacherAccount.teacherName);
-        finalTeacherId = matchingTeacher?.id;
+    // الاشتراك في تغيرات حالة الجلسة (Login, Logout, Token Refresh)
+    const { unsubscribe } = subscribeToAuthState((_event, currentSession, currentUser) => {
+      if (isMounted) {
+        setSession(currentSession);
+        setUser(currentUser);
       }
+    });
 
-      const user: User = {
-        id: teacherAccount.id,
-        email: `${username}@teacher.nebras`,
-        displayName: teacherAccount.teacherName,
-        role: UserRole.TEACHER,
-        teacherId: finalTeacherId,
-        username: teacherAccount.username
-      };
-      localStorage.setItem('nebras_active_user', JSON.stringify(user));
-      setUser(user);
-      return true;
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [configured]);
+
+  /**
+   * تسجيل الدخول: يستدعي signInWithPassword الحقيقي من Supabase
+   * إذا لم يكن الخادم متصلاً أو كانت المفاتيح ناقصة، تفشل العملية فوراً برسالة صريحة
+   */
+  const login = async (email: string, password: string): Promise<AuthOperationResult> => {
+    const result = await signInWithPassword(email, password);
+    if (result.success && result.user && result.session) {
+      setUser(result.user);
+      setSession(result.session);
     }
-
-    return false;
+    return result;
   };
 
-  const logout = () => {
-    localStorage.removeItem('nebras_active_user');
+  /**
+   * تسجيل الخروج: إنهاء الجلسة عبر Supabase Auth وتفريغ الحالة بالكامل
+   */
+  const logout = async (): Promise<void> => {
+    await authSignOut();
     setUser(null);
+    setSession(null);
   };
 
-  const setDemoUser = (isDemo: boolean) => {
-    if (isDemo) {
-      const mockUser: User = {
-        id: 'local-admin',
-        email: 'admin@nebras.edu',
-        displayName: 'مدير النظام',
-        role: UserRole.ADMIN
-      };
-      localStorage.setItem('nebras_active_user', JSON.stringify(mockUser));
-      setUser(mockUser);
-    } else {
-      logout();
-    }
+  /**
+   * استعادة كلمة المرور: إرسال رابط رسمي عبر البريد الإلكتروني
+   */
+  const resetPassword = async (email: string): Promise<AuthOperationResult> => {
+    return await resetPasswordForEmail(email);
+  };
+
+  /**
+   * تسجيل دخول تجريبي سريع للاختبار والمعاينة
+   */
+  const loginAsDemo = (role: UserRole) => {
+    const demoUser = DEMO_USERS[role] || DEMO_USERS[UserRole.ADMIN];
+    setUser(demoUser);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setDemoUser }}>
-      {!loading && children}
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        isConfigured: configured,
+        login,
+        logout,
+        resetPassword,
+        refreshProfile,
+        loginAsDemo,
+      }}
+    >
+      {children}
     </AuthContext.Provider>
   );
 };

@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA Redirect Rules
+# توجيه كافة المسارات إلى الصفحة الرئيسية مع كود 200 لدعم مسارات React SPA
+/*    /index.html   200
