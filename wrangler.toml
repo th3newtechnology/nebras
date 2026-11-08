@@ -1,9 +1,1 @@
-name = "nebras-quran"
-compatibility_date = "2026-11-01"
-pages_build_output_dir = "dist"
 
-[site]
-bucket = "./dist"
-
-[env.production.vars]
-NODE_VERSION = "20.18.0"
